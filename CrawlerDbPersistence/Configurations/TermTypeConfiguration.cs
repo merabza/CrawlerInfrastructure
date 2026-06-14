@@ -1,7 +1,6 @@
 ﻿using CrawlerDbModels;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
-using SystemTools.SystemToolsShared;
 
 namespace CrawlerDbPersistence.Configurations;
 

@@ -11,20 +11,11 @@ using Microsoft.Extensions.Logging;
 
 namespace CrawlerRepositories;
 
-public sealed class CrawlerRepository : ICrawlerRepository
+public sealed class CrawlerRepository(CrawlerDbContext ctx, ILogger<CrawlerRepository> logger) : ICrawlerRepository
 {
     private const int MaxChangesCount = 100000;
-    private readonly CrawlerDbContext _context;
-    private readonly ILogger<CrawlerRepository> _logger;
 
     private int _changesCount;
-
-    // ReSharper disable once ConvertToPrimaryConstructor
-    public CrawlerRepository(CrawlerDbContext ctx, ILogger<CrawlerRepository> logger)
-    {
-        _context = ctx;
-        _logger = logger;
-    }
 
     public bool NeedSaveChanges()
     {
@@ -36,11 +27,11 @@ public sealed class CrawlerRepository : ICrawlerRepository
         try
         {
             _changesCount = 0;
-            return _context.SaveChanges();
+            return ctx.SaveChanges();
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Error occurred executing {MethodName}.", nameof(SaveChanges));
+            logger.LogError(e, "Error occurred executing {MethodName}.", nameof(SaveChanges));
             throw new Exception($"Error occurred executing {nameof(SaveChanges)}. See inner exception for details.", e);
         }
     }
@@ -53,14 +44,14 @@ public sealed class CrawlerRepository : ICrawlerRepository
             using IDbContextTransaction transaction = GetTransaction();
             try
             {
-                int ret = _context.SaveChanges();
+                int ret = ctx.SaveChanges();
                 transaction.Commit();
                 _changesCount = 0;
                 return ret;
             }
             catch (Exception e)
             {
-                _logger.LogError(e, $"Error occurred executing {nameof(SaveChangesWithTransaction)}.");
+                logger.LogError(e, $"Error occurred executing {nameof(SaveChangesWithTransaction)}.");
                 transaction.Rollback();
                 throw new Exception(
                     $"Error occurred executing {nameof(SaveChangesWithTransaction)}. See inner exception for details.",
@@ -69,7 +60,7 @@ public sealed class CrawlerRepository : ICrawlerRepository
         }
         catch (Exception e)
         {
-            _logger.LogError(e, $"Error occurred executing {nameof(SaveChangesWithTransaction)}.");
+            logger.LogError(e, $"Error occurred executing {nameof(SaveChangesWithTransaction)}.");
             throw new Exception(
                 $"Error occurred executing {nameof(SaveChangesWithTransaction)}. See inner exception for details.", e);
         }
@@ -77,48 +68,48 @@ public sealed class CrawlerRepository : ICrawlerRepository
 
     public IDbContextTransaction GetTransaction()
     {
-        return _context.Database.BeginTransaction();
+        return ctx.Database.BeginTransaction();
     }
 
     public HostModel CheckAddHostName(string hostName)
     {
-        HostModel? hostModel = _context.Hosts.SingleOrDefault(a => a.HostName == hostName);
+        HostModel? hostModel = ctx.Hosts.SingleOrDefault(a => a.HostName == hostName);
         if (hostModel != null)
         {
             return hostModel;
         }
 
         _changesCount++;
-        return _context.Hosts.Add(new HostModel { HostName = hostName }).Entity;
+        return ctx.Hosts.Add(new HostModel { HostName = hostName }).Entity;
     }
 
     public ExtensionModel CheckAddExtensionName(string extensionName)
     {
-        ExtensionModel? extensionModel = _context.Extensions.SingleOrDefault(a => a.ExtName == extensionName);
+        ExtensionModel? extensionModel = ctx.Extensions.SingleOrDefault(a => a.ExtName == extensionName);
         if (extensionModel != null)
         {
             return extensionModel;
         }
 
         _changesCount++;
-        return _context.Extensions.Add(new ExtensionModel { ExtName = extensionName }).Entity;
+        return ctx.Extensions.Add(new ExtensionModel { ExtName = extensionName }).Entity;
     }
 
     public SchemeModel CheckAddSchemeName(string schemeName)
     {
-        SchemeModel? schemeModel = _context.Schemes.SingleOrDefault(a => a.SchName == schemeName);
+        SchemeModel? schemeModel = ctx.Schemes.SingleOrDefault(a => a.SchName == schemeName);
         if (schemeModel != null)
         {
             return schemeModel;
         }
 
         _changesCount++;
-        return _context.Schemes.Add(new SchemeModel { SchName = schemeName }).Entity;
+        return ctx.Schemes.Add(new SchemeModel { SchName = schemeName }).Entity;
     }
 
     public UrlModel? GetUrl(int hostId, int extId, int scmId, int urlHashCode, string urName)
     {
-        List<UrlModel> matchUrls = _context.Urls.Where(w =>
+        List<UrlModel> matchUrls = ctx.Urls.Where(w =>
                 w.UrlHashCode == urlHashCode && w.HostId == hostId && w.ExtensionId == extId && w.SchemeId == scmId)
             .ToList();
         return matchUrls.FirstOrDefault(url => url.UrlName == urName);
@@ -135,7 +126,7 @@ public sealed class CrawlerRepository : ICrawlerRepository
         bool isSiteMap, bool isAllowed)
     {
         _changesCount++;
-        return _context.Urls.Add(new UrlModel
+        return ctx.Urls.Add(new UrlModel
         {
             UrlName = urName,
             HostNavigation = host,
@@ -150,13 +141,13 @@ public sealed class CrawlerRepository : ICrawlerRepository
     public void AddUrlGraph(UrlGraphNode urlGraphNode)
     {
         _changesCount++;
-        _context.UrlGraphNodes.Add(urlGraphNode);
+        ctx.UrlGraphNodes.Add(urlGraphNode);
     }
 
     public void AddUrlGraph(int fromUrlPageId, UrlModel gotUrl, int batchPartId)
     {
         _changesCount++;
-        _context.UrlGraphNodes.Add(new UrlGraphNode
+        ctx.UrlGraphNodes.Add(new UrlGraphNode
         {
             FromUrlId = fromUrlPageId, GotUrlNavigation = gotUrl, BatchPartId = batchPartId
         });
@@ -166,7 +157,7 @@ public sealed class CrawlerRepository : ICrawlerRepository
     {
         return
         [
-            .. _context.HostsByBatches.Where(w => w.BatchId == batch.BatchId).Include(i => i.SchemeNavigation)
+            .. ctx.HostsByBatches.Where(w => w.BatchId == batch.BatchId).Include(i => i.SchemeNavigation)
                 .Include(i => i.HostNavigation)
                 .Select(s => $"{s.SchemeNavigation.SchName}://{s.HostNavigation.HostName}")
         ];
@@ -176,18 +167,18 @@ public sealed class CrawlerRepository : ICrawlerRepository
     {
         try
         {
-            HostByBatch? hostByBatch = _context.HostsByBatches.SingleOrDefault(w =>
+            HostByBatch? hostByBatch = ctx.HostsByBatches.SingleOrDefault(w =>
                 w.BatchId == batch.BatchId && w.SchemeNavigation.SchName == schemeName &&
                 w.HostNavigation.HostName == hostName);
 
             if (hostByBatch != null)
             {
-                _context.HostsByBatches.Remove(hostByBatch);
+                ctx.HostsByBatches.Remove(hostByBatch);
             }
         }
         catch (Exception e)
         {
-            _logger.LogError(e,
+            logger.LogError(e,
                 "Error occurred executing {MethodName} for batchId={BatchId}, schemeName={SchemeName}, hostName={HostName}.",
                 nameof(RemoveHostNamesByBatch), batch.BatchId, schemeName, hostName);
             throw new Exception(
@@ -200,7 +191,7 @@ public sealed class CrawlerRepository : ICrawlerRepository
     {
         try
         {
-            HostByBatch? hostByBatch = _context.HostsByBatches.SingleOrDefault(w =>
+            HostByBatch? hostByBatch = ctx.HostsByBatches.SingleOrDefault(w =>
                 w.BatchId == batch.BatchId && w.SchemeNavigation.SchName == schemeName &&
                 w.HostNavigation.HostName == hostName);
 
@@ -209,28 +200,28 @@ public sealed class CrawlerRepository : ICrawlerRepository
                 return;
             }
 
-            SchemeModel? scheme = _context.Schemes.SingleOrDefault(s => s.SchName == schemeName);
+            SchemeModel? scheme = ctx.Schemes.SingleOrDefault(s => s.SchName == schemeName);
             if (scheme == null)
             {
                 _changesCount++;
-                scheme = _context.Schemes.Add(new SchemeModel { SchName = schemeName }).Entity;
+                scheme = ctx.Schemes.Add(new SchemeModel { SchName = schemeName }).Entity;
             }
 
-            HostModel? host = _context.Hosts.SingleOrDefault(s => s.HostName == hostName);
+            HostModel? host = ctx.Hosts.SingleOrDefault(s => s.HostName == hostName);
             if (host == null)
             {
                 _changesCount++;
-                host = _context.Hosts.Add(new HostModel { HostName = hostName }).Entity;
+                host = ctx.Hosts.Add(new HostModel { HostName = hostName }).Entity;
             }
 
-            _context.HostsByBatches.Add(new HostByBatch
+            ctx.HostsByBatches.Add(new HostByBatch
             {
                 BatchId = batch.BatchId, SchemeNavigation = scheme, HostNavigation = host
             });
         }
         catch (Exception e)
         {
-            _logger.LogError(e,
+            logger.LogError(e,
                 "Error occurred executing AddHostNamesByBatch for batchId={BatchId}, schemeName={SchemeName}, hostName={HostName}.",
                 batch.BatchId, schemeName, hostName);
             throw new Exception(
@@ -241,40 +232,40 @@ public sealed class CrawlerRepository : ICrawlerRepository
 
     public BatchPart? GetOpenedBatchPart(int batchId)
     {
-        return _context.BatchParts.Include(i => i.BatchNavigation).ThenInclude(x => x.HostsByBatches)
+        return ctx.BatchParts.Include(i => i.BatchNavigation).ThenInclude(x => x.HostsByBatches)
             .SingleOrDefault(s => s.BatchId == batchId && s.Finished == null);
     }
 
     public BatchPart TryCreateNewPart(int batchId)
     {
         var newBatchPart = new BatchPart { BatchId = batchId, Created = DateTime.Now };
-        BatchPart ent = _context.BatchParts.Add(newBatchPart).Entity;
-        _context.Entry(ent).Reference(e => e.BatchNavigation).Load();
-        _context.Entry(ent.BatchNavigation).Collection(b => b.HostsByBatches).Load();
+        BatchPart ent = ctx.BatchParts.Add(newBatchPart).Entity;
+        ctx.Entry(ent).Reference(e => e.BatchNavigation).Load();
+        ctx.Entry(ent.BatchNavigation).Collection(b => b.HostsByBatches).Load();
         return ent;
     }
 
     public void FinishBatchPart(BatchPart batchPart)
     {
         batchPart.Finished = DateTime.Now;
-        _context.BatchParts.Update(batchPart);
+        ctx.BatchParts.Update(batchPart);
     }
 
     public UrlGraphNode? GetUrlGraphEntry(int fromUrlPageId, int urlUrlId, int batchPartId)
     {
-        return _context.UrlGraphNodes.Include(i => i.GotUrlNavigation).SingleOrDefault(s =>
+        return ctx.UrlGraphNodes.Include(i => i.GotUrlNavigation).SingleOrDefault(s =>
             s.FromUrlId == fromUrlPageId && s.GotUrlId == urlUrlId && s.BatchPartId == batchPartId);
     }
 
     public ContentAnalysis? GetContentAnalysis(int batchPartBpId, int urlId)
     {
-        return _context.ContentsAnalysis.SingleOrDefault(s => s.BatchPartId == batchPartBpId && s.UrlId == urlId);
+        return ctx.ContentsAnalysis.SingleOrDefault(s => s.BatchPartId == batchPartBpId && s.UrlId == urlId);
     }
 
     public void DeleteContentAnalysis(ContentAnalysis contentAnalysis)
     {
         _changesCount++;
-        _context.ContentsAnalysis.Remove(contentAnalysis);
+        ctx.ContentsAnalysis.Remove(contentAnalysis);
     }
 
     public UrlModel UpdateUrlData(UrlModel urlForProcess)
@@ -282,11 +273,11 @@ public sealed class CrawlerRepository : ICrawlerRepository
         try
         {
             _changesCount++;
-            return _context.Update(urlForProcess).Entity;
+            return ctx.Update(urlForProcess).Entity;
         }
         catch (Exception e)
         {
-            _logger.LogError(e, $"Error occurred executing {nameof(UpdateUrlData)}.");
+            logger.LogError(e, $"Error occurred executing {nameof(UpdateUrlData)}.");
             throw new Exception($"Error occurred executing {nameof(UpdateUrlData)}. See inner exception for details.",
                 e);
         }
@@ -309,14 +300,14 @@ public sealed class CrawlerRepository : ICrawlerRepository
 
     public string? LoadRobotsFromBase(int batchPartId, int schemeId, int hostId)
     {
-        return _context.Robots
+        return ctx.Robots
             .SingleOrDefault(x => x.BatchPartId == batchPartId && x.SchemeId == schemeId && x.HostId == hostId)
             ?.RobotsTxt;
     }
 
     public void SaveRobotsTxtToBase(int batchPartId, int schemeId, int hostId, string robotsTxt)
     {
-        Robot? robot = _context.Robots.SingleOrDefault(x =>
+        Robot? robot = ctx.Robots.SingleOrDefault(x =>
             x.BatchPartId == batchPartId && x.SchemeId == schemeId && x.HostId == hostId);
         if (robot is null)
         {
@@ -324,35 +315,35 @@ public sealed class CrawlerRepository : ICrawlerRepository
             {
                 BatchPartId = batchPartId, SchemeId = schemeId, HostId = hostId, RobotsTxt = robotsTxt
             };
-            _context.Robots.Add(robot);
+            ctx.Robots.Add(robot);
         }
         else
         {
             robot.RobotsTxt = robotsTxt;
-            _context.Robots.Update(robot);
+            ctx.Robots.Update(robot);
         }
     }
 
     public long GetUrlsCount(int batchPartId)
     {
-        return (from bp in _context.BatchParts
-            join hbb in _context.HostsByBatches on bp.BatchId equals hbb.BatchId
-            join u in _context.Urls on new { hbb.HostId, hbb.SchemeId } equals new { u.HostId, u.SchemeId }
+        return (from bp in ctx.BatchParts
+            join hbb in ctx.HostsByBatches on bp.BatchId equals hbb.BatchId
+            join u in ctx.Urls on new { hbb.HostId, hbb.SchemeId } equals new { u.HostId, u.SchemeId }
             where bp.BpId == batchPartId && u.IsAllowed
             select u).Count();
     }
 
     public long GetTermsCount()
     {
-        return _context.Terms.Count();
+        return ctx.Terms.Count();
     }
 
     public long GetLoadedUrlsCount(int batchPartId)
     {
-        return (from bp in _context.BatchParts
-            join hbb in _context.HostsByBatches on bp.BatchId equals hbb.BatchId
-            join u in _context.Urls on new { hbb.HostId, hbb.SchemeId } equals new { u.HostId, u.SchemeId }
-            join ca in _context.ContentsAnalysis on new { BatchPartId = bp.BpId, u.UrlId } equals new
+        return (from bp in ctx.BatchParts
+            join hbb in ctx.HostsByBatches on bp.BatchId equals hbb.BatchId
+            join u in ctx.Urls on new { hbb.HostId, hbb.SchemeId } equals new { u.HostId, u.SchemeId }
+            join ca in ctx.ContentsAnalysis on new { BatchPartId = bp.BpId, u.UrlId } equals new
             {
                 ca.BatchPartId, ca.UrlId
             }
@@ -362,25 +353,25 @@ public sealed class CrawlerRepository : ICrawlerRepository
 
     public TermType CheckAddTermType(string termTypeKey)
     {
-        return _context.TermTypes.SingleOrDefault(a => a.TtKey == termTypeKey) ??
-               _context.TermTypes.Add(new TermType { TtKey = termTypeKey }).Entity;
+        return ctx.TermTypes.SingleOrDefault(a => a.TtKey == termTypeKey) ??
+               ctx.TermTypes.Add(new TermType { TtKey = termTypeKey }).Entity;
     }
 
     public Term? GetTerm(string termText)
     {
-        return _context.Terms.FirstOrDefault(s => s.TermText == termText);
+        return ctx.Terms.FirstOrDefault(s => s.TermText == termText);
     }
 
     public Term AddTerm(string termText, TermType termTypeInBase)
     {
         _changesCount++;
-        return _context.Terms.Add(new Term { TermText = termText, TermTypeNavigation = termTypeInBase }).Entity;
+        return ctx.Terms.Add(new Term { TermText = termText, TermTypeNavigation = termTypeInBase }).Entity;
     }
 
     public void AddTermByUrl(int batchPartId, int urlId, Term term, int position)
     {
         _changesCount++;
-        _context.TermsByUrls.Add(new TermByUrl
+        ctx.TermsByUrls.Add(new TermByUrl
         {
             BatchPartId = batchPartId, UrlId = urlId, TermNavigation = term, Position = position
         });
@@ -388,13 +379,13 @@ public sealed class CrawlerRepository : ICrawlerRepository
 
     public TermByUrl? GeTermByUrlEntry(int batchPartId, int urlId, int position)
     {
-        return _context.TermsByUrls.SingleOrDefault(s =>
+        return ctx.TermsByUrls.SingleOrDefault(s =>
             s.BatchPartId == batchPartId && s.UrlId == urlId && s.Position == position);
     }
 
     public void ClearTermsTail(int batchPartId, int urlId, int position)
     {
-        _context.TermsByUrls.RemoveRange(_context.TermsByUrls.Where(s =>
+        ctx.TermsByUrls.RemoveRange(ctx.TermsByUrls.Where(s =>
             s.BatchPartId == batchPartId && s.UrlId == urlId && s.Position >= position));
         //_context.SaveChanges();
     }
@@ -403,17 +394,17 @@ public sealed class CrawlerRepository : ICrawlerRepository
     {
         _changesCount++;
         termByUrl.TermNavigation = term;
-        _context.TermsByUrls.Update(termByUrl);
+        ctx.TermsByUrls.Update(termByUrl);
     }
 
     public List<UrlModel> GetOnePortionUrls(int batchPartId, int maxCount)
     {
         return
         [
-            .. (from bp in _context.BatchParts
-                join hbb in _context.HostsByBatches on bp.BatchId equals hbb.BatchId
-                join u in _context.Urls on new { hbb.HostId, hbb.SchemeId } equals new { u.HostId, u.SchemeId }
-                join ca in _context.ContentsAnalysis on new { BatchPartId = bp.BpId, u.UrlId } equals new
+            .. (from bp in ctx.BatchParts
+                join hbb in ctx.HostsByBatches on bp.BatchId equals hbb.BatchId
+                join u in ctx.Urls on new { hbb.HostId, hbb.SchemeId } equals new { u.HostId, u.SchemeId }
+                join ca in ctx.ContentsAnalysis on new { BatchPartId = bp.BpId, u.UrlId } equals new
                 {
                     ca.BatchPartId, ca.UrlId
                 } into gj
@@ -428,7 +419,7 @@ public sealed class CrawlerRepository : ICrawlerRepository
         DateTime? lastModifiedDateOnServer)
     {
         _changesCount++;
-        _context.ContentsAnalysis.Add(new ContentAnalysis
+        ctx.ContentsAnalysis.Add(new ContentAnalysis
         {
             BatchPartId = batchPartBpId,
             UrlId = urlId,
@@ -444,11 +435,11 @@ public sealed class CrawlerRepository : ICrawlerRepository
     {
         try
         {
-            return _context.Hosts.ToList();
+            return ctx.Hosts.ToList();
         }
         catch (Exception e)
         {
-            _logger.LogError(e, $"Error occurred executing {nameof(GetHostsList)}.");
+            logger.LogError(e, $"Error occurred executing {nameof(GetHostsList)}.");
             throw new Exception($"Error in {nameof(GetHostsList)}. See inner exception for details.", e);
         }
     }
@@ -457,11 +448,11 @@ public sealed class CrawlerRepository : ICrawlerRepository
     {
         try
         {
-            return _context.Hosts.SingleOrDefault(w => w.HostName == hostName);
+            return ctx.Hosts.SingleOrDefault(w => w.HostName == hostName);
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Error occurred executing {MethodName} for hostName={HostName}.", nameof(GetHostByName),
+            logger.LogError(e, "Error occurred executing {MethodName} for hostName={HostName}.", nameof(GetHostByName),
                 hostName);
             throw new Exception(
                 $"Error in {nameof(GetHostByName)} for hostName={hostName}. See inner exception for details.", e);
@@ -472,11 +463,11 @@ public sealed class CrawlerRepository : ICrawlerRepository
     {
         try
         {
-            return _context.Update(host).Entity;
+            return ctx.Update(host).Entity;
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Error occurred executing {MethodName} for hostId={HostId}.", nameof(UpdateHost),
+            logger.LogError(e, "Error occurred executing {MethodName} for hostId={HostId}.", nameof(UpdateHost),
                 host.HostId);
             throw new Exception(
                 $"Error in {nameof(UpdateHost)} for hostId={host.HostId}. See inner exception for details.", e);
@@ -487,11 +478,11 @@ public sealed class CrawlerRepository : ICrawlerRepository
     {
         try
         {
-            return _context.Hosts.Add(newHost).Entity;
+            return ctx.Hosts.Add(newHost).Entity;
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Error occurred executing {MethodName} for hostName={HostName}.", nameof(CreateHost),
+            logger.LogError(e, "Error occurred executing {MethodName} for hostName={HostName}.", nameof(CreateHost),
                 newHost.HostName);
             throw new Exception(
                 $"Error in {nameof(CreateHost)} for hostName={newHost.HostName}. See inner exception for details.", e);
@@ -502,11 +493,11 @@ public sealed class CrawlerRepository : ICrawlerRepository
     {
         try
         {
-            return _context.Hosts.Remove(hostForDelete).Entity;
+            return ctx.Hosts.Remove(hostForDelete).Entity;
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Error occurred executing {MethodName} for hostId={HostId}.", nameof(DeleteHost),
+            logger.LogError(e, "Error occurred executing {MethodName} for hostId={HostId}.", nameof(DeleteHost),
                 hostForDelete.HostId);
             throw new Exception(
                 $"Error in {nameof(DeleteHost)} for hostId={hostForDelete.HostId}. See inner exception for details.",
@@ -522,11 +513,11 @@ public sealed class CrawlerRepository : ICrawlerRepository
     {
         try
         {
-            return _context.Schemes.ToList();
+            return ctx.Schemes.ToList();
         }
         catch (Exception e)
         {
-            _logger.LogError(e, $"Error occurred executing {nameof(GetSchemesList)}.");
+            logger.LogError(e, $"Error occurred executing {nameof(GetSchemesList)}.");
             throw new Exception($"Error in {nameof(GetSchemesList)}. See inner exception for details.", e);
         }
     }
@@ -535,11 +526,11 @@ public sealed class CrawlerRepository : ICrawlerRepository
     {
         try
         {
-            return _context.Schemes.SingleOrDefault(w => w.SchName == schemeName);
+            return ctx.Schemes.SingleOrDefault(w => w.SchName == schemeName);
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Error occurred executing {MethodName} for schemeName={SchemeName}.",
+            logger.LogError(e, "Error occurred executing {MethodName} for schemeName={SchemeName}.",
                 nameof(GetSchemeByName), schemeName);
             throw new Exception(
                 $"Error in {nameof(GetSchemeByName)} for schemeName={schemeName}. See inner exception for details.", e);
@@ -550,11 +541,11 @@ public sealed class CrawlerRepository : ICrawlerRepository
     {
         try
         {
-            return _context.Update(scheme).Entity;
+            return ctx.Update(scheme).Entity;
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Error occurred executing {MethodName} for schemeId={SchemeId}.", nameof(UpdateScheme),
+            logger.LogError(e, "Error occurred executing {MethodName} for schemeId={SchemeId}.", nameof(UpdateScheme),
                 scheme.SchId);
             throw new Exception(
                 $"Error in {nameof(UpdateScheme)} for schemeId={scheme.SchId}. See inner exception for details.", e);
@@ -565,11 +556,11 @@ public sealed class CrawlerRepository : ICrawlerRepository
     {
         try
         {
-            return _context.Schemes.Add(newScheme).Entity;
+            return ctx.Schemes.Add(newScheme).Entity;
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Error occurred executing {MethodName} for schemeName={SchemeName}.",
+            logger.LogError(e, "Error occurred executing {MethodName} for schemeName={SchemeName}.",
                 nameof(CreateScheme), newScheme.SchName);
             throw new Exception(
                 $"Error in {nameof(CreateScheme)} for schemeName={newScheme.SchName}. See inner exception for details.",
@@ -581,11 +572,11 @@ public sealed class CrawlerRepository : ICrawlerRepository
     {
         try
         {
-            return _context.Schemes.Remove(schemeForDelete).Entity;
+            return ctx.Schemes.Remove(schemeForDelete).Entity;
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Error occurred executing {MethodName} for schemeId={SchemeId}.", nameof(DeleteScheme),
+            logger.LogError(e, "Error occurred executing {MethodName} for schemeId={SchemeId}.", nameof(DeleteScheme),
                 schemeForDelete.SchId);
             throw new Exception(
                 $"Error in {nameof(DeleteScheme)} for schemeId={schemeForDelete.SchId}. See inner exception for details.",
@@ -601,11 +592,11 @@ public sealed class CrawlerRepository : ICrawlerRepository
     {
         try
         {
-            return _context.Batches.ToList();
+            return ctx.Batches.ToList();
         }
         catch (Exception e)
         {
-            _logger.LogError(e, $"Error occurred executing {nameof(GetBatchesList)}.");
+            logger.LogError(e, $"Error occurred executing {nameof(GetBatchesList)}.");
             throw new Exception($"Error in {nameof(GetBatchesList)}. See inner exception for details.", e);
         }
     }
@@ -614,11 +605,11 @@ public sealed class CrawlerRepository : ICrawlerRepository
     {
         try
         {
-            return _context.Batches.SingleOrDefault(w => w.BatchName == batchName);
+            return ctx.Batches.SingleOrDefault(w => w.BatchName == batchName);
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Error occurred executing {MethodName} for batchName={BatchName}.",
+            logger.LogError(e, "Error occurred executing {MethodName} for batchName={BatchName}.",
                 nameof(GetBatchByName), batchName);
             throw new Exception(
                 $"Error in {nameof(GetBatchByName)} for batchName={batchName}. See inner exception for details.", e);
@@ -629,11 +620,11 @@ public sealed class CrawlerRepository : ICrawlerRepository
     {
         try
         {
-            return _context.Update(batch).Entity;
+            return ctx.Update(batch).Entity;
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Error occurred executing {MethodName} for batchId={BatchId}.", nameof(UpdateBatch),
+            logger.LogError(e, "Error occurred executing {MethodName} for batchId={BatchId}.", nameof(UpdateBatch),
                 batch.BatchId);
             throw new Exception(
                 $"Error in {nameof(UpdateBatch)} for batchId={batch.BatchId}. See inner exception for details.", e);
@@ -644,11 +635,11 @@ public sealed class CrawlerRepository : ICrawlerRepository
     {
         try
         {
-            return _context.Batches.Add(newBatch).Entity;
+            return ctx.Batches.Add(newBatch).Entity;
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Error occurred executing {MethodName} for batchName={BatchName}.", nameof(CreateBatch),
+            logger.LogError(e, "Error occurred executing {MethodName} for batchName={BatchName}.", nameof(CreateBatch),
                 newBatch.BatchName);
             throw new Exception(
                 $"Error in {nameof(CreateBatch)} for batchName={newBatch.BatchName}. See inner exception for details.",
@@ -660,11 +651,11 @@ public sealed class CrawlerRepository : ICrawlerRepository
     {
         try
         {
-            return _context.Batches.Remove(batchForDelete).Entity;
+            return ctx.Batches.Remove(batchForDelete).Entity;
         }
         catch (Exception e)
         {
-            _logger.LogError(e, "Error occurred executing {MethodName} for batchId={BatchId}.", nameof(DeleteBatch),
+            logger.LogError(e, "Error occurred executing {MethodName} for batchId={BatchId}.", nameof(DeleteBatch),
                 batchForDelete.BatchId);
             throw new Exception(
                 $"Error in {nameof(DeleteBatch)} for batchId={batchForDelete.BatchId}. See inner exception for details.",
