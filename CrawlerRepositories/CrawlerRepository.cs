@@ -597,6 +597,145 @@ public sealed class CrawlerRepository(CrawlerDbContext ctx, ILogger<CrawlerRepos
 
     #endregion
 
+    #region Task cruder
+
+    public List<TaskModel> GetTasksList()
+    {
+        try
+        {
+            return ctx.Tasks.Include(i => i.StartPoints).ToList();
+        }
+        catch (Exception e)
+        {
+            logger.LogError(e, $"Error occurred executing {nameof(GetTasksList)}.");
+            throw new Exception($"Error in {nameof(GetTasksList)}. See inner exception for details.", e);
+        }
+    }
+
+    public TaskModel? GetTaskByName(string taskName)
+    {
+        try
+        {
+            return ctx.Tasks.Include(i => i.StartPoints).SingleOrDefault(w => w.TaskName == taskName);
+        }
+        catch (Exception e)
+        {
+            logger.LogError(e, "Error occurred executing {MethodName} for taskName={TaskName}.",
+                nameof(GetTaskByName), taskName);
+            throw new Exception(
+                $"Error in {nameof(GetTaskByName)} for taskName={taskName}. See inner exception for details.", e);
+        }
+    }
+
+    public TaskModel CreateTask(TaskModel newTask)
+    {
+        try
+        {
+            return ctx.Tasks.Add(newTask).Entity;
+        }
+        catch (Exception e)
+        {
+            logger.LogError(e, "Error occurred executing {MethodName} for taskName={TaskName}.", nameof(CreateTask),
+                newTask.TaskName);
+            throw new Exception(
+                $"Error in {nameof(CreateTask)} for taskName={newTask.TaskName}. See inner exception for details.", e);
+        }
+    }
+
+    public TaskModel UpdateTask(TaskModel task)
+    {
+        try
+        {
+            return ctx.Update(task).Entity;
+        }
+        catch (Exception e)
+        {
+            logger.LogError(e, "Error occurred executing {MethodName} for taskId={TaskId}.", nameof(UpdateTask),
+                task.TaskId);
+            throw new Exception(
+                $"Error in {nameof(UpdateTask)} for taskId={task.TaskId}. See inner exception for details.", e);
+        }
+    }
+
+    public TaskModel DeleteTask(TaskModel taskForDelete)
+    {
+        try
+        {
+            return ctx.Tasks.Remove(taskForDelete).Entity;
+        }
+        catch (Exception e)
+        {
+            logger.LogError(e, "Error occurred executing {MethodName} for taskId={TaskId}.", nameof(DeleteTask),
+                taskForDelete.TaskId);
+            throw new Exception(
+                $"Error in {nameof(DeleteTask)} for taskId={taskForDelete.TaskId}. See inner exception for details.", e);
+        }
+    }
+
+    public TaskStartPoint AddStartPoint(int taskId, string startPoint)
+    {
+        try
+        {
+            return ctx.TaskStartPoints.Add(new TaskStartPoint { TaskId = taskId, StartPoint = startPoint }).Entity;
+        }
+        catch (Exception e)
+        {
+            logger.LogError(e, "Error occurred executing {MethodName} for taskId={TaskId}.", nameof(AddStartPoint),
+                taskId);
+            throw new Exception(
+                $"Error in {nameof(AddStartPoint)} for taskId={taskId}. See inner exception for details.", e);
+        }
+    }
+
+    public TaskStartPoint? GetStartPoint(int taskId, string startPoint)
+    {
+        try
+        {
+            return ctx.TaskStartPoints.SingleOrDefault(w => w.TaskId == taskId && w.StartPoint == startPoint);
+        }
+        catch (Exception e)
+        {
+            logger.LogError(e, "Error occurred executing {MethodName} for taskId={TaskId}.", nameof(GetStartPoint),
+                taskId);
+            throw new Exception(
+                $"Error in {nameof(GetStartPoint)} for taskId={taskId}. See inner exception for details.", e);
+        }
+    }
+
+    public TaskStartPoint UpdateStartPoint(TaskStartPoint startPointForUpdate)
+    {
+        try
+        {
+            return ctx.Update(startPointForUpdate).Entity;
+        }
+        catch (Exception e)
+        {
+            logger.LogError(e, "Error occurred executing {MethodName} for tspId={TspId}.", nameof(UpdateStartPoint),
+                startPointForUpdate.TspId);
+            throw new Exception(
+                $"Error in {nameof(UpdateStartPoint)} for tspId={startPointForUpdate.TspId}. See inner exception for details.",
+                e);
+        }
+    }
+
+    public TaskStartPoint DeleteStartPoint(TaskStartPoint startPointForDelete)
+    {
+        try
+        {
+            return ctx.TaskStartPoints.Remove(startPointForDelete).Entity;
+        }
+        catch (Exception e)
+        {
+            logger.LogError(e, "Error occurred executing {MethodName} for tspId={TspId}.", nameof(DeleteStartPoint),
+                startPointForDelete.TspId);
+            throw new Exception(
+                $"Error in {nameof(DeleteStartPoint)} for tspId={startPointForDelete.TspId}. See inner exception for details.",
+                e);
+        }
+    }
+
+    #endregion
+
     #region Batch cruder
 
     public List<Batch> GetBatchesList()

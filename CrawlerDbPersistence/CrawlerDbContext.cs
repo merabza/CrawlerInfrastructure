@@ -35,6 +35,9 @@ public sealed class CrawlerDbContext : DbContext
     public DbSet<UrlModel> Urls => Set<UrlModel>();
     //public DbSet<UrlAllowModel> UrlAllows => Set<UrlAllowModel>();
 
+    public DbSet<TaskModel> Tasks => Set<TaskModel>();
+    public DbSet<TaskStartPoint> TaskStartPoints => Set<TaskStartPoint>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(typeof(CrawlerDbContext).Assembly);
