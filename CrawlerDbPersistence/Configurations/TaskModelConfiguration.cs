@@ -6,8 +6,7 @@ namespace CrawlerDbPersistence.Configurations;
 
 public sealed class TaskModelConfiguration : IEntityTypeConfiguration<TaskModel>
 {
-    public const int TaskNameLength = 50;
-    public const int ApiNameLength = 50;
+    private const int TaskNameLength = 50;
 
     public void Configure(EntityTypeBuilder<TaskModel> builder)
     {
@@ -18,6 +17,5 @@ public sealed class TaskModelConfiguration : IEntityTypeConfiguration<TaskModel>
         builder.HasIndex(e => e.TaskName).IsUnique();
 
         builder.Property(e => e.TaskName).HasMaxLength(TaskNameLength);
-        builder.Property(e => e.ApiName).HasMaxLength(ApiNameLength);
     }
 }
